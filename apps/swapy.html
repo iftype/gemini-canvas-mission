@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DevSwipe - FE Interview Prep</title>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%);
+            --glass-bg: rgba(255, 255, 255, 0.4);
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --accent-color: #007AFF;
+            --success-color: #34C759;
+            --error-color: #FF3B30;
+            --text-main: #1d1d1f;
+            --text-sub: #86868b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: var(--text-main);
+        }
+
+        .app-container {
+            position: relative;
+            width: 92%;
+            max-width: 400px;
+            height: 85vh;
+            max-height: 700px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        header h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 0.75rem;
+            color: var(--text-sub);
+            margin-top: 4px;
+        }
+
+        .card-stack {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            perspective: 1000px;
+            margin: 10px 0;
+            min-height: 0; /* Important for flex child overflow */
+        }
+
+        .card {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 25px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            cursor: grab;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+            user-select: none;
+            touch-action: none;
+            border: 1px solid rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .card::after {
+            content: '질문을 읽고 스와이프하세요';
+            position: absolute;
+            bottom: 15px;
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: var(--text-sub);
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .card.is-review::after {
+            content: '탭하여 답변 보기';
+            color: var(--accent-color);
+            opacity: 0.8;
+        }
+        
+        .card.flipped::after { opacity: 0; }
+
+        .card-topic {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            background: rgba(0, 122, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        .card-title {
+            width: 100%;
+            font-weight: 800;
+            line-height: 1.35;
+            word-break: keep-all;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            font-size: 1.4rem;
+            padding: 0 10px;
+        }
+
+        .card.flipped .card-title {
+            flex: 0;
+            font-size: 0.95rem !important;
+            color: var(--text-sub);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #eee;
+        }
+
+        .card-desc {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text-main);
+            opacity: 0;
+            max-height: 0;
+            overflow-y: auto;
+            transition: opacity 0.4s ease, max-height 0.3s ease;
+            text-align: left;
+            padding: 0 5px;
+            width: 100%;
+            /* 모바일 스크롤 부드럽게 */
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .card.flipped .card-desc {
+            opacity: 1;
+            max-height: 80%; 
+            flex: 1;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 40px;
+            z-index: 10;
+        }
+
+        .spinner {
+            width: 35px;
+            height: 35px;
+            border: 4px solid rgba(0,122,255,0.1);
+            border-left-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .status-badge {
+            position: absolute;
+            top: 15px;
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .badge-know { right: 15px; border: 2px solid var(--success-color); color: var(--success-color); transform: rotate(15deg); }
+        .badge-not-know { left: 15px; border: 2px solid var(--error-color); color: var(--error-color); transform: rotate(-15deg); }
+
+        .controls { display: flex; justify-content: center; gap: 20px; margin-top: 10px; flex-shrink: 0; }
+        .btn { width: 55px; height: 55px; border-radius: 50%; border: none; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s; }
+        .btn:active { transform: scale(0.9); }
+        .btn-no { color: var(--error-color); }
+        .btn-yes { color: var(--success-color); }
+
+        .empty-state { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; }
+        .empty-state h2 { font-size: 1.3rem; margin-bottom: 10px; }
+        .empty-state p { font-size: 0.9rem; color: var(--text-sub); margin-bottom: 20px; }
+        .empty-state button { padding: 12px 24px; border-radius: 25px; border: none; background: var(--accent-color); color: white; font-weight: 600; cursor: pointer; }
+
+        svg { width: 22px; height: 22px; fill: currentColor; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container" id="app">
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="spinner"></div>
+            <p style="margin-top: 12px; font-size: 0.9rem; font-weight: 600;">면접 질문 생성 중...</p>
+        </div>
+
+        <header>
+            <h1 id="mode-title">FE 면접 대비</h1>
+            <p id="mode-desc">모르면 왼쪽으로, 알면 오른쪽으로!</p>
+        </header>
+
+        <div class="card-stack" id="cardStack"></div>
+
+        <div class="empty-state" id="emptyState">
+            <h2 id="resultMsg">세션 종료</h2>
+            <p id="resultSubMsg">다시 학습하시겠습니까?</p>
+            <button id="actionBtn" onclick="startReview()">모르는 질문 복습</button>
+        </div>
+
+        <div class="controls" id="controls">
+            <button class="btn btn-no" onclick="swipeLeft()" aria-label="모름">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            <button class="btn btn-yes" onclick="swipeRight()" aria-label="앎">
+                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+        let currentData = [];
+        let unknownList = [];
+        let isReviewMode = false;
+        let isAnimating = false;
+
+        const stack = document.getElementById('cardStack');
+        const emptyState = document.getElementById('emptyState');
+        const controls = document.getElementById('controls');
+        const modeTitle = document.getElementById('mode-title');
+        const modeDesc = document.getElementById('mode-desc');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        async function fetchConcepts() {
+            loadingOverlay.style.display = 'flex';
+            const systemPrompt = `You are a Senior Frontend Interviewer. Generate 5 high-quality interview questions (Junior level). 
+            Topics: React, JavaScript, Web Performance, Browser Internals. 
+            Language: Korean. 
+            Return JSON array: [{id, topic, title, desc}].`;
+            const userQuery = "프론트엔드 핵심 기술 면접 질문 5개 생성해줘.";
+            
+            let retries = 5;
+            while (retries > 0) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: userQuery }] }],
+                            systemInstruction: { parts: [{ text: systemPrompt }] },
+                            generationConfig: { responseMimeType: "application/json" }
+                        })
+                    });
+                    const result = await response.json();
+                    currentData = JSON.parse(result.candidates[0].content.parts[0].text);
+                    loadingOverlay.style.display = 'none';
+                    renderStack();
+                    return;
+                } catch (err) {
+                    retries--;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+        }
+
+        function adjustFontSize(element) {
+            const length = element.innerText.length;
+            let fontSize = 1.4; // rem base
+
+            if (length > 80) fontSize = 0.85;
+            else if (length > 60) fontSize = 0.95;
+            else if (length > 40) fontSize = 1.15;
+            else if (length > 25) fontSize = 1.3;
+
+            element.style.fontSize = `${fontSize}rem`;
+        }
+
+        function createCard(item) {
+            const card = document.createElement('div');
+            card.className = `card ${isReviewMode ? 'is-review' : ''}`;
+            card.innerHTML = `
+                <div class="status-badge badge-know">앎</div>
+                <div class="status-badge badge-not-know">모름</div>
+                <div class="card-topic">${item.topic}</div>
+                <div class="card-title">${item.title}</div>
+                <div class="card-desc">${item.desc}</div>
+            `;
+            
+            const titleEl = card.querySelector('.card-title');
+            adjustFontSize(titleEl);
+
+            const descEl = card.querySelector('.card-desc');
+            // Prevent swipe drag when scrolling long descriptions
+            descEl.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            descEl.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+
+            initDrag(card);
+            
+            card.addEventListener('click', (e) => {
+                // Don't flip if clicking inside description (scrolling)
+                if (descEl.contains(e.target)) return;
+                
+                if (isReviewMode && !card.classList.contains('swiping')) {
+                    card.classList.toggle('flipped');
+                }
+            });
+            return card;
+        }
+
+        function renderStack() {
+            stack.innerHTML = '';
+            if (currentData.length === 0) { showEmptyState(); return; }
+            for (let i = currentData.length - 1; i >= 0; i--) {
+                stack.appendChild(createCard(currentData[i]));
+            }
+            emptyState.style.display = 'none';
+            controls.style.display = 'flex';
+        }
+
+        function initDrag(card) {
+            let startX = 0, currentX = 0, isDragging = false, hasMoved = false;
+            
+            const onStart = (e) => {
+                if (isAnimating) return;
+                // If it's a touch on card description, we might want to scroll instead
+                if (e.target.closest('.card-desc') && card.classList.contains('flipped')) return;
+
+                startX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+                isDragging = true;
+                hasMoved = false;
+                card.style.transition = 'none';
+            };
+
+            const onMove = (e) => {
+                if (!isDragging) return;
+                const x = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+                currentX = x - startX;
+                
+                if (Math.abs(currentX) > 10) {
+                    hasMoved = true;
+                    card.classList.add('swiping');
+                }
+                
+                if (hasMoved) {
+                    card.style.transform = `translateX(${currentX}px) rotate(${currentX / 15}Deg)`;
+                    const badgeK = card.querySelector('.badge-know'), badgeN = card.querySelector('.badge-not-know');
+                    const op = Math.min(Math.abs(currentX) / 80, 1);
+                    if (currentX > 0) { badgeK.style.opacity = op; badgeN.style.opacity = 0; }
+                    else { badgeK.style.opacity = 0; badgeN.style.opacity = op; }
+                }
+            };
+
+            const onEnd = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                
+                if (Math.abs(currentX) > 100 && hasMoved) {
+                    finishSwipe(currentX > 0 ? 'right' : 'left', card);
+                } else {
+                    resetCard(card);
+                }
+                
+                setTimeout(() => card.classList.remove('swiping'), 50);
+                currentX = 0;
+            };
+
+            const resetCard = (c) => {
+                c.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                c.style.transform = '';
+                c.querySelector('.badge-know').style.opacity = 0;
+                c.querySelector('.badge-not-know').style.opacity = 0;
+            };
+
+            card.addEventListener('mousedown', onStart);
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onEnd);
+            card.addEventListener('touchstart', onStart, { passive: true });
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('touchend', onEnd);
+        }
+
+        function finishSwipe(direction, card) {
+            isAnimating = true;
+            card.style.transition = 'transform 0.5s ease, opacity 0.5s ease';
+            card.style.transform = `translateX(${direction === 'right' ? 500 : -500}px) rotate(${direction === 'right' ? 20 : -20}deg)`;
+            card.style.opacity = '0';
+            setTimeout(() => {
+                const item = currentData.shift();
+                if (direction === 'left') unknownList.push(item);
+                card.remove();
+                isAnimating = false;
+                if (currentData.length === 0) showEmptyState();
+            }, 300);
+        }
+
+        function showEmptyState() {
+            stack.innerHTML = '';
+            controls.style.display = 'none';
+            emptyState.style.display = 'flex';
+            const actionBtn = document.getElementById('actionBtn');
+            const resultMsg = document.getElementById('resultMsg');
+            const resultSubMsg = document.getElementById('resultSubMsg');
+            
+            if (!isReviewMode) {
+                if (unknownList.length > 0) {
+                    resultMsg.innerText = "1차 학습 완료";
+                    resultSubMsg.innerText = `${unknownList.length}개의 질문을 모릅니다. 복습이 필요해요!`;
+                    actionBtn.innerText = "모르는 질문 복습하기";
+                    actionBtn.onclick = startReview;
+                } else {
+                    resultMsg.innerText = "대단해요! 올킬!";
+                    resultSubMsg.innerText = "모든 질문에 정답을 알고 계시네요.";
+                    actionBtn.innerText = "새로운 질문 생성";
+                    actionBtn.onclick = resetApp;
+                }
+            } else {
+                if (unknownList.length > 0) {
+                    resultMsg.innerText = "복습 세션 완료";
+                    resultSubMsg.innerText = `아직 ${unknownList.length}개의 질문이 헷갈립니다.`;
+                    actionBtn.innerText = "다시 복습하기";
+                    actionBtn.onclick = startReview;
+                } else {
+                    resultMsg.innerText = "완전 정복!";
+                    resultSubMsg.innerText = "모든 질문을 마스터했습니다. 고생하셨어요!";
+                    actionBtn.innerText = "처음부터 다시 학습";
+                    actionBtn.onclick = resetApp;
+                }
+            }
+        }
+
+        function startReview() {
+            currentData = [...unknownList];
+            unknownList = [];
+            isReviewMode = true;
+            modeTitle.innerText = "복습 모드";
+            modeDesc.innerText = "탭하여 답변을 확인하고 다시 체크하세요.";
+            renderStack();
+        }
+
+        function resetApp() {
+            isReviewMode = false;
+            unknownList = [];
+            modeTitle.innerText = "FE 면접 대비";
+            modeDesc.innerText = "모르면 왼쪽으로, 알면 오른쪽으로!";
+            fetchConcepts();
+        }
+
+        function swipeLeft() { if (!isAnimating && currentData.length > 0) finishSwipe('left', stack.lastElementChild); }
+        function swipeRight() { if (!isAnimating && currentData.length > 0) finishSwipe('right', stack.lastElementChild); }
+
+        window.onload = fetchConcepts;
+    </script>
+</body>
+</html>
