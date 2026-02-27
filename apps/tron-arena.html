@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tron Lightcycle Arena - Mobile Touch Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #fff; touch-action: none; -webkit-user-select: none; user-select: none; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        .overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+            background: rgba(0, 0, 0, 0.85); pointer-events: auto;
+        }
+        h1 { font-size: clamp(2.5rem, 10vw, 4rem); color: #00f2ff; text-shadow: 0 0 20px #00f2ff; margin-bottom: 1.5rem; text-align: center; }
+        .btn { 
+            padding: 15px 50px; font-size: 1.5rem; background: transparent; 
+            border: 2px solid #00f2ff; color: #00f2ff; cursor: pointer; 
+            transition: all 0.2s; pointer-events: auto; margin-top: 20px;
+            border-radius: 8px; font-weight: bold;
+        }
+        .btn:active { background: #00f2ff; color: #000; box-shadow: 0 0 30px #00f2ff; transform: scale(0.95); }
+        
+        #minimap-container {
+            position: absolute; top: 20px; right: 20px;
+            width: 120px; height: 120px; border: 2px solid #444; background: rgba(0,0,0,0.5);
+        }
+        #minimap { width: 100%; height: 100%; image-rendering: pixelated; }
+        #status { position: absolute; top: 20px; left: 20px; font-size: 1rem; color: #00f2ff; }
+        .hidden { display: none !important; }
+        #ranking { margin: 15px 0; font-size: 0.9rem; line-height: 1.4; max-height: 30vh; overflow-y: auto; width: 85%; border-top: 1px solid #333; padding-top: 10px; }
+
+        .sound-settings {
+            display: flex; flex-direction: column; gap: 10px; margin-top: 20px;
+            background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 10px;
+            border: 1px solid #333; width: 280px; pointer-events: auto;
+        }
+        .sound-row { display: flex; justify-content: space-between; align-items: center; }
+        .sound-row label { font-size: 0.8rem; color: #aaa; }
+        input[type=range] { cursor: pointer; accent-color: #00f2ff; width: 140px; }
+
+        #alert-msg {
+            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 2.5rem; font-weight: bold; color: #ff0044; text-shadow: 0 0 20px #ff0044;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+
+        #flash-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fff; opacity: 0; pointer-events: none; z-index: 100;
+        }
+
+        /* Mobile Controls */
+        #touch-controls {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; z-index: 5; pointer-events: auto;
+        }
+        .touch-zone { flex: 1; height: 100%; pointer-events: auto; }
+        #jump-zone {
+            position: absolute; bottom: 0; left: 30%; width: 40%; height: 40%;
+            border-top: 1px solid rgba(0, 242, 255, 0.1);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="flash-overlay"></div>
+        <div id="alert-msg">METEOR IMPACT!</div>
+
+        <!-- Touch Controls Layout -->
+        <div id="touch-controls" class="hidden">
+            <div class="touch-zone" id="left-zone"></div>
+            <div class="touch-zone" id="right-zone"></div>
+            <div id="jump-zone"></div>
+        </div>
+
+        <div id="start-screen" class="overlay">
+            <h1>TRON ARENA</h1>
+            <p style="text-align:center; font-size: 0.9rem; padding: 0 20px;">
+                좌/우 영역: 회전 | 하단 중앙: 점프<br>
+                <span style="color: #00f2ff;">[그리드 최적화 시스템]</span>
+            </p>
+            
+            <div class="sound-settings">
+                <div class="sound-row">
+                    <label>BGM 볼륨</label>
+                    <input type="range" id="bgm-volume" min="0" max="1" step="0.01" value="0.5">
+                </div>
+                <div class="sound-row">
+                    <label>효과음 볼륨</label>
+                    <input type="range" id="sfx-volume" min="0" max="1" step="0.01" value="0.7">
+                </div>
+            </div>
+
+            <button class="btn" id="start-btn">GAME START</button>
+        </div>
+
+        <div id="game-ui" class="hidden">
+            <div id="status">Speed: <span id="speed-val">1.0</span>x | Alive: <span id="alive-count">14</span></div>
+            <div id="minimap-container">
+                <canvas id="minimap" width="200" height="200"></canvas>
+            </div>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1 id="result-title">GAME OVER</h1>
+            <div id="ranking"></div>
+            <button class="btn" id="retry-btn">RETRY</button>
+        </div>
+    </div>
+
+    <audio id="bgm" loop src="https://cdn.pixabay.com/audio/2024/07/19/audio_0649251c25.mp3"></audio>
+    <audio id="effect-snd" src="https://cdn.pixabay.com/audio/2026/02/02/audio_e55fc12b30.mp3"></audio>
+
+    <script>
+        const GRID_SIZE = 200; 
+        const CELL_SIZE = 6; 
+        const OFFSET = (GRID_SIZE * CELL_SIZE) / 2;
+        const DEFAULT_FOV = 75;
+        const COLORS = [
+            0x00f2ff, // Player
+            0xff4444, 0x44ff44, 0x4444ff, // CPU Hunters
+            0x44ff00, 0xffaa00, 0xaa00ff, 
+            0xffff00, 0x0044ff, 0xff00ff, 0x00ffaa,
+            0x88ff88, 0xff8888, 0x8888ff, 0xffffff, 0xcccccc
+        ];
+
+        let scene, camera, renderer;
+        let players = [];
+        let bitmap = new Int8Array(GRID_SIZE * GRID_SIZE).fill(-1);
+        let isGaming = false;
+        let meteorInterval;
+        
+        const bgm = document.getElementById('bgm');
+        const effectSnd = document.getElementById('effect-snd');
+        const bgmVolumeSlider = document.getElementById('bgm-volume');
+        const sfxVolumeSlider = document.getElementById('sfx-volume');
+        const alertMsg = document.getElementById('alert-msg');
+        const minimapCtx = document.getElementById('minimap').getContext('2d');
+
+        let shakeIntensity = 0;
+        let flashOpacity = 0;
+        let zoomTargetFOV = DEFAULT_FOV;
+
+        bgmVolumeSlider.addEventListener('input', (e) => bgm.volume = e.target.value);
+        sfxVolumeSlider.addEventListener('input', (e) => effectSnd.volume = e.target.value);
+
+        class Bike {
+            constructor(id, x, z, dir, color, isCPU = true) {
+                this.id = id;
+                this.gridX = Math.floor(x);
+                this.gridZ = Math.floor(z);
+                this.dir = dir; // 0: North, 1: East, 2: South, 3: West
+                this.color = color;
+                this.isCPU = isCPU;
+                this.alive = true;
+                this.speed = 1.0;
+                this.moveProgress = 0;
+                this.turnQueue = null;
+                this.baseSpeed = 0.22; 
+                this.aiType = (id >= 1 && id <= 3) ? 'hunter' : 'survivor';
+                this.riskAppetite = 0.8 + Math.random() * 0.4;
+                this.REACTION_TIME = (this.aiType === 'hunter') ? 10 : (15 + Math.random() * 20); 
+                this.nextDecisionTime = 0;
+
+                this.mesh = new THREE.Group();
+                const bodyGeo = new THREE.BoxGeometry(CELL_SIZE * 0.4, CELL_SIZE * 0.4, CELL_SIZE * 0.8);
+                const bodyMat = new THREE.MeshPhongMaterial({ color: color, emissive: color, emissiveIntensity: 0.5 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = CELL_SIZE * 0.2;
+                this.mesh.add(body);
+                
+                this.trails = [];
+                this.updateMeshPosition();
+                scene.add(this.mesh);
+            }
+
+            updateMeshPosition() {
+                // 정확한 그리드 중심점 계산
+                const getCoord = (grid) => grid * CELL_SIZE - OFFSET + (CELL_SIZE / 2);
+                const currX = getCoord(this.gridX);
+                const currZ = getCoord(this.gridZ);
+
+                if (this.moveProgress === 0) {
+                    this.mesh.position.set(currX, 0, currZ);
+                    this.mesh.rotation.y = -this.dir * Math.PI / 2;
+                } else {
+                    let [nextX, nextZ] = this.getDirPos(this.dir);
+                    const nX = getCoord(nextX);
+                    const nZ = getCoord(nextZ);
+                    this.mesh.position.x = currX + (nX - currX) * this.moveProgress;
+                    this.mesh.position.z = currZ + (nZ - currZ) * this.moveProgress;
+                }
+            }
+
+            createTrailSegment() {
+                const thickness = CELL_SIZE * 0.25;
+                const wallHeight = CELL_SIZE * 0.35;
+                const geo = new THREE.BoxGeometry(thickness, CELL_SIZE, wallHeight);
+                const mat = new THREE.MeshBasicMaterial({ color: this.color, opacity: 0.9 });
+                const segment = new THREE.Mesh(geo, mat);
+                
+                let offX = 0, offZ = 0;
+                if (this.dir === 0) offZ = -CELL_SIZE/2; 
+                else if (this.dir === 1) offX = CELL_SIZE/2; 
+                else if (this.dir === 2) offZ = CELL_SIZE/2; 
+                else if (this.dir === 3) offX = -CELL_SIZE/2;
+
+                const posX = this.gridX * CELL_SIZE - OFFSET + (CELL_SIZE / 2) + offX;
+                const posZ = this.gridZ * CELL_SIZE - OFFSET + (CELL_SIZE / 2) + offZ;
+
+                segment.position.set(posX, wallHeight / 2, posZ);
+                if (this.dir === 1 || this.dir === 3) segment.rotation.z = Math.PI / 2; 
+                else segment.rotation.x = Math.PI / 2;
+                
+                segment.userData = { gridX: this.gridX, gridZ: this.gridZ };
+                scene.add(segment);
+                this.trails.push(segment);
+            }
+
+            die(killerId) {
+                if (!this.alive) return;
+                this.alive = false;
+                scene.remove(this.mesh);
+                this.trails.forEach(t => scene.remove(t));
+                this.trails = [];
+                
+                const idx = this.gridZ * GRID_SIZE + this.gridX;
+                if (bitmap[idx] === this.id) bitmap[idx] = -1;
+
+                // 전체 맵에서 내 흔적 삭제
+                for (let i = 0; i < bitmap.length; i++) if (bitmap[i] === this.id) bitmap[i] = -1;
+
+                if (this.id === 0) {
+                    endGame();
+                } else {
+                    checkGameEnd();
+                }
+
+                if (killerId !== null && killerId !== this.id) {
+                    const killer = players.find(p => p.id === killerId);
+                    if (killer) killer.speed += 0.08; 
+                } else {
+                    players.forEach(p => { if (p.alive) p.speed += 0.02; });
+                }
+            }
+
+            jumpForward(steps = 3) {
+                if (!this.alive) return;
+                this.moveProgress = 0;
+                
+                // 점프 전 방향 전환 큐 처리 (그리드 정렬 보장)
+                if (this.turnQueue !== null) {
+                    if (this.turnQueue === 'L') this.dir = (this.dir + 3) % 4;
+                    else if (this.turnQueue === 'R') this.dir = (this.dir + 1) % 4;
+                    this.turnQueue = null;
+                }
+
+                for (let s = 0; s < steps; s++) {
+                    if (!this.alive) break;
+                    let [nextX, nextZ] = this.getDirPos(this.dir);
+                    if (nextX < 0 || nextX >= GRID_SIZE || nextZ < 0 || nextZ >= GRID_SIZE) { 
+                        this.die(null); 
+                        break; 
+                    }
+                    const idx = nextZ * GRID_SIZE + nextX;
+                    if (bitmap[idx] !== -1) { 
+                        this.die(bitmap[idx]); 
+                        break; 
+                    }
+                    this.createTrailSegment();
+                    this.gridX = nextX; 
+                    this.gridZ = nextZ;
+                    bitmap[idx] = this.id;
+                }
+                this.updateMeshPosition();
+            }
+
+            getDirPos(d, sx = this.gridX, sz = this.gridZ) {
+                let nx = sx, nz = sz;
+                if (d === 0) nz--; else if (d === 1) nx++; else if (d === 2) nz++; else if (d === 3) nx--;
+                return [nx, nz];
+            }
+
+            move() {
+                if (!this.alive) return;
+                if (this.isCPU) this.calculateNextMove();
+                
+                this.moveProgress += this.baseSpeed * this.speed;
+                
+                if (this.moveProgress >= 1) {
+                    this.moveProgress = 0;
+                    
+                    // 방향 전환은 오직 셀 경계에서만 일어남 (그리드 중심 유지)
+                    if (this.turnQueue !== null) {
+                        if (this.turnQueue === 'L') this.dir = (this.dir + 3) % 4;
+                        else if (this.turnQueue === 'R') this.dir = (this.dir + 1) % 4;
+                        this.turnQueue = null;
+                        this.mesh.rotation.y = -this.dir * Math.PI / 2;
+                    }
+
+                    let [nextX, nextZ] = this.getDirPos(this.dir);
+                    if (nextX < 0 || nextX >= GRID_SIZE || nextZ < 0 || nextZ >= GRID_SIZE) { 
+                        this.die(null); 
+                        return; 
+                    }
+
+                    const idx = nextZ * GRID_SIZE + nextX;
+                    if (bitmap[idx] !== -1) { 
+                        this.die(bitmap[idx]); 
+                        return; 
+                    }
+
+                    this.createTrailSegment();
+                    this.gridX = nextX; 
+                    this.gridZ = nextZ;
+                    bitmap[idx] = this.id;
+                }
+                this.updateMeshPosition();
+            }
+
+            countFreeSpace(x, z, maxNodes = 600) {
+                if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE || bitmap[z * GRID_SIZE + x] !== -1) return 0;
+                let count = 0;
+                const queue = [x, z];
+                const visited = new Set();
+                visited.add(z * GRID_SIZE + x);
+                let head = 0;
+                while (head < queue.length && count < maxNodes) {
+                    const cx = queue[head++]; const cz = queue[head++];
+                    count++;
+                    const dx = [1, -1, 0, 0], dz = [0, 0, 1, -1];
+                    for (let i = 0; i < 4; i++) {
+                        const nx = cx + dx[i], nz = cz + dz[i];
+                        if (nx >= 0 && nx < GRID_SIZE && nz >= 0 && nz < GRID_SIZE) {
+                            const idx = nz * GRID_SIZE + nx;
+                            if (bitmap[idx] === -1 && !visited.has(idx)) {
+                                visited.add(idx);
+                                queue.push(nx, nz);
+                            }
+                        }
+                    }
+                }
+                return count;
+            }
+
+            calculateNextMove() {
+                if (performance.now() < this.nextDecisionTime) return;
+                this.nextDecisionTime = performance.now() + this.REACTION_TIME;
+                
+                const leftDir = (this.dir + 3) % 4;
+                const rightDir = (this.dir + 1) % 4;
+                const [fX, fZ] = this.getDirPos(this.dir);
+                const [lX, lZ] = this.getDirPos(leftDir);
+                const [rX, rZ] = this.getDirPos(rightDir);
+                
+                const fSpace = this.countFreeSpace(fX, fZ);
+                const lSpace = this.countFreeSpace(lX, lZ);
+                const rSpace = this.countFreeSpace(rX, rZ);
+
+                if (this.aiType === 'hunter' && players[0]?.alive) {
+                    const p = players[0];
+                    let tx = p.gridX, tz = p.gridZ;
+                    const dist = (nx, nz) => Math.abs(nx - tx) + Math.abs(nz - tz);
+                    const dF = fSpace > 5 ? dist(fX, fZ) : Infinity;
+                    const dL = lSpace > 5 ? dist(lX, lZ) : Infinity;
+                    const dR = rSpace > 5 ? dist(rX, rZ) : Infinity;
+                    
+                    if (dL < dF && dL <= dR && lSpace > 12) this.turnQueue = 'L';
+                    else if (dR < dF && dR < dL && rSpace > 12) this.turnQueue = 'R';
+                    else if (fSpace < 12) this.escapeToSafety(lSpace, rSpace, fSpace);
+                } else {
+                    if (fSpace < 25 * this.riskAppetite) this.escapeToSafety(lSpace, rSpace, fSpace);
+                }
+            }
+
+            escapeToSafety(l, r, f) {
+                if (l >= r && l > f) this.turnQueue = 'L';
+                else if (r > l && r > f) this.turnQueue = 'R';
+                else if (f === 0) { if (l > 0) this.turnQueue = 'L'; else if (r > 0) this.turnQueue = 'R'; }
+            }
+        }
+
+        function checkGameEnd() {
+            const alive = players.filter(p => p.alive);
+            document.getElementById('alive-count').innerText = alive.length;
+            if (alive.length === 1 && alive[0].id === 0) {
+                endGame();
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(DEFAULT_FOV, window.innerWidth / window.innerHeight, 0.1, 5000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(100, 200, 100);
+            scene.add(sun);
+
+            const gridHelper = new THREE.GridHelper(GRID_SIZE * CELL_SIZE, GRID_SIZE, 0x444444, 0x222222);
+            gridHelper.position.y = 0.05;
+            scene.add(gridHelper);
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', onKeyDown);
+            
+            const startBtn = document.getElementById('start-btn');
+            const retryBtn = document.getElementById('retry-btn');
+            
+            const handleStart = (e) => { e.preventDefault(); startGame(); };
+            const handleRetry = (e) => { e.preventDefault(); resetGame(); };
+
+            startBtn.addEventListener('touchstart', handleStart);
+            startBtn.addEventListener('click', startGame);
+            retryBtn.addEventListener('touchstart', handleRetry);
+            retryBtn.addEventListener('click', resetGame);
+
+            document.getElementById('left-zone').addEventListener('touchstart', (e) => {
+                e.preventDefault(); if(isGaming && players[0]) players[0].turnQueue = 'L';
+            });
+            document.getElementById('right-zone').addEventListener('touchstart', (e) => {
+                e.preventDefault(); if(isGaming && players[0]) players[0].turnQueue = 'R';
+            });
+            document.getElementById('jump-zone').addEventListener('touchstart', (e) => {
+                e.preventDefault(); if(isGaming) triggerJump();
+            });
+
+            animate();
+        }
+
+        function triggerJump() {
+            triggerFlashEffect(4.0);
+            players.forEach(p => { if (p.alive) p.jumpForward(3); });
+        }
+
+        function triggerFlashEffect(intensity = 5.0) {
+            flashOpacity = 1.0;
+            shakeIntensity = intensity;
+            zoomTargetFOV = DEFAULT_FOV - 12;
+            effectSnd.currentTime = 0;
+            effectSnd.play().catch(() => {});
+        }
+
+        function onKeyDown(e) {
+            if (isGaming && players[0]?.alive) {
+                if (e.key === 'ArrowLeft') players[0].turnQueue = 'L';
+                if (e.key === 'ArrowRight') players[0].turnQueue = 'R';
+                if (e.code === 'Space') triggerJump();
+            }
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('game-ui').classList.remove('hidden');
+            document.getElementById('touch-controls').classList.remove('hidden');
+            resetGameState();
+            isGaming = true;
+            bgm.currentTime = 0;
+            bgm.play().catch(() => {});
+            if (meteorInterval) clearInterval(meteorInterval);
+            meteorInterval = setInterval(dropMeteors, 12000);
+            triggerFlashEffect(6.0);
+        }
+
+        function resetGameState() {
+            players.forEach(p => { scene.remove(p.mesh); p.trails.forEach(t => scene.remove(t)); });
+            bitmap.fill(-1);
+            players = [];
+            
+            // 플레이어는 항상 정확한 셀 좌표에서 시작
+            players.push(new Bike(0, Math.floor(GRID_SIZE/2), GRID_SIZE-15, 0, COLORS[0], false));
+            bitmap[(GRID_SIZE-15) * GRID_SIZE + Math.floor(GRID_SIZE/2)] = 0;
+            
+            for(let i=0; i < 13; i++) {
+                let rx, rz;
+                do { rx = 20 + Math.floor(Math.random()*(GRID_SIZE-40)); rz = 20 + Math.floor(Math.random()*(GRID_SIZE-40)); } while(bitmap[rz*GRID_SIZE+rx] !== -1);
+                players.push(new Bike(i+1, rx, rz, Math.floor(Math.random()*4), COLORS[i+1], true));
+                bitmap[rz*GRID_SIZE+rx] = i+1;
+            }
+            document.getElementById('alive-count').innerText = players.length;
+        }
+
+        function resetGame() {
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+            document.getElementById('touch-controls').classList.add('hidden');
+        }
+
+        function endGame() {
+            if (!isGaming) return;
+            isGaming = false; bgm.pause(); clearInterval(meteorInterval);
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('touch-controls').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('result-title').innerText = (players[0]?.alive) ? "VICTORY" : "DEFEAT";
+            
+            let rankHtml = "<h3>RANKING</h3>";
+            const sorted = [...players].sort((a,b) => (a.alive ? -1 : 1));
+            sorted.forEach((p, i) => {
+                rankHtml += `<div style="color:#${p.color.toString(16).padStart(6,'0')}">${i+1}위: ${p.id===0?"YOU": "CPU "+p.id}</div>`;
+            });
+            document.getElementById('ranking').innerHTML = rankHtml;
+        }
+
+        function dropMeteors() {
+            if (!isGaming) return;
+            alertMsg.style.opacity = 1;
+            setTimeout(() => alertMsg.style.opacity = 0, 1500);
+            setTimeout(() => {
+                if (!isGaming) return;
+                for (let i = 0; i < 12; i++) {
+                    impactArea(Math.floor(Math.random()*GRID_SIZE), Math.floor(Math.random()*GRID_SIZE));
+                }
+                triggerFlashEffect(15.0);
+            }, 1500);
+        }
+
+        function impactArea(cx, cz) {
+            const r = 3;
+            for (let x = cx-r; x <= cx+r; x++) {
+                for (let z = cz-r; z <= cz+r; z++) {
+                    if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) continue;
+                    bitmap[z * GRID_SIZE + x] = -1;
+                    players.forEach(p => {
+                        for (let i = p.trails.length - 1; i >= 0; i--) {
+                            if (p.trails[i].userData.gridX === x && p.trails[i].userData.gridZ === z) {
+                                scene.remove(p.trails[i]); p.trails.splice(i, 1);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isGaming) {
+                players.forEach(p => p.move());
+                const p = players[0];
+                if (p?.alive) {
+                    const offset = new THREE.Vector3(0, CELL_SIZE*4, CELL_SIZE*9).applyQuaternion(p.mesh.quaternion);
+                    let targetPos = p.mesh.position.clone().add(offset);
+                    if (shakeIntensity > 0) {
+                        targetPos.x += (Math.random()-0.5)*shakeIntensity;
+                        targetPos.y += (Math.random()-0.5)*shakeIntensity;
+                        targetPos.z += (Math.random()-0.5)*shakeIntensity;
+                        shakeIntensity *= 0.88;
+                    }
+                    camera.position.lerp(targetPos, 0.1);
+                    camera.lookAt(p.mesh.position.clone().add(new THREE.Vector3(0, CELL_SIZE, 0)));
+                    if (Math.abs(camera.fov - zoomTargetFOV) > 0.1) {
+                        camera.fov = THREE.MathUtils.lerp(camera.fov, zoomTargetFOV, 0.15);
+                        camera.updateProjectionMatrix();
+                    }
+                }
+                // Minimap
+                minimapCtx.fillStyle = '#000'; minimapCtx.fillRect(0,0,200,200);
+                for(let i=0; i<bitmap.length; i++) if(bitmap[i]!==-1) {
+                    const pl = players[bitmap[i]];
+                    if(pl) { minimapCtx.fillStyle = '#'+pl.color.toString(16).padStart(6,'0'); minimapCtx.fillRect(i%GRID_SIZE, Math.floor(i/GRID_SIZE), 1, 1); }
+                }
+                if (players[0]) document.getElementById('speed-val').innerText = players[0].speed.toFixed(1);
+            }
+            if (flashOpacity > 0) {
+                flashOpacity -= 0.06;
+                document.getElementById('flash-overlay').style.opacity = Math.max(0, flashOpacity);
+            }
+            renderer.render(scene, camera);
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>
